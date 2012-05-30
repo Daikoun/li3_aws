@@ -481,7 +481,7 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertEqual('text/plain', $result->headers['Content-Type']);
 		$this->assertEqual(strlen($text), $result->headers['Content-Length']);
 		$this->assertEqual('foo.txt', $result->_id);
-		$this->assertEqual($text, $result->content);
+		$this->assertEqual($text, $result->file);
 		//read object and ignore limit
 		$this->query = new Query(compact('model'));
 		$this->query->conditions(array('_id' => 'foo.txt'));
@@ -538,10 +538,9 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertEqual(1, count($result));
 		$result = $result[0];
 		$this->assertEqual('foo.txt', $result->_id);
-		$content = stream_get_contents($result->content);
+		$content = $result->file->getBytes();
 		$content = explode("\r\n\r\n", $content);
 		$this->assertEqual($text, $content[1]);
-		fclose($result->content);
 		//test read nonexisting object
 		$socket::$data = join("\r\n", array(
 			'HTTP/1.1 404 Not Found',

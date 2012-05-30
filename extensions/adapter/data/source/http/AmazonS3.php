@@ -6,6 +6,7 @@ use lithium\net\http\Media;
 use lithium\util\String;
 use lithium\util\Inflector;
 use lithium\data\model\QueryException;
+use li3_aws\data\AmazonS3File;
 
 class AmazonS3 extends \lithium\data\source\Http {
 
@@ -130,7 +131,12 @@ class AmazonS3 extends \lithium\data\source\Http {
 				$meta = stream_get_meta_data($result);
 				$headers = isset($meta['wrapper_data'])	? join("\r\n", $meta['wrapper_data']) . "\r\n\r\n" : null;
 				$response = $conn->invokeMethod('_instance', array('response', array('message' => $headers)));
-				$response->body = $result;
+				$fileParams = array(
+					'stream'   => $result,
+					'filename' => $pathConfig['object'],
+					'size'     => $response->headers('Content-Length'),
+				);
+				$response->body = new AmazonS3File($fileParams);
 				break;
 			default:
 				$response = $this->connection->send($method, $pathConfig['path'], $pathConfig['body'], $config);
@@ -532,7 +538,7 @@ class AmazonS3 extends \lithium\data\source\Http {
 			} else {
 				$entity = array(
 					'headers' => $response->headers,
-					'content' => $response->body, 
+					'file' => $response->body, 
 				);
 				$entity += isset($conditions['object']) ? array('key' => $conditions['object']) : compact('source');
 				$data = array($entity);

@@ -24,12 +24,7 @@ class AmazonS3File extends \lithium\core\Object {
 	}
 	
 	public function getBytes() {
-		$contents = '';
-		if ($this->_stream) {
-			$contents = stream_get_contents($this->_stream);
-			fclose($this->_stream);
-		}
-		return $contents;
+		return ($this->_stream) ? stream_get_contents($this->_stream) : '';
 	}
 	
 	public function getSize() {

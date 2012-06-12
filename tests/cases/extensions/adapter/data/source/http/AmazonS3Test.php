@@ -246,6 +246,58 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertEqual('The specified bucket does not exist.', $entity->errors('foo-bucket1'));
 	}
 
+	public function testCreateMultipartUpload() {
+		$model = $this->_model;
+		$socket = $this->_testConfig['socket'];
+		$bucket = 'foo-bucket1';
+		$model::meta('source', $bucket);
+        //create file by filename
+		$text = str_repeat('a', 1048576);
+		$name = 'tmp_file.txt';
+		$tmp_name = tempnam(null, "tmp");
+		$handle = fopen($tmp_name, "w");
+		fwrite($handle, $text); //create 1MB textfile
+		fclose($handle);
+		$finfo = finfo_open(FILEINFO_MIME_TYPE);
+		$type = finfo_file($finfo, $tmp_name);
+		$size = filesize($tmp_name);
+		$error = 0;
+		$entity = new Document(compact('model'));
+		$this->query = new Query(compact('model', 'entity') + array('type' => 'create'));
+		$this->query->data(array(
+			'file' => compact('name', 'type', 'tmp_name', 'error', 'size'),
+		));
+		$result = $this->db->create($this->query, array('chunk_size' => 716800)); //chunk size 700kB
+		$this->assertTrue($result);
+		$chunks = $socket::$temp;
+		$this->assertEqual('foo', $chunks['UploadId']);
+		$this->assertEqual($name, $chunks['Key']);
+		$this->assertEqual($bucket, $chunks['Bucket']);
+		$this->assertEqual(2, count($chunks['data']));
+		$this->assertEqual(716800, strlen($chunks['data'][1]));
+		$this->assertEqual(1048576-716800, strlen($chunks['data'][2]));
+		$request = $this->db->last->request;
+		$this->assertEqual("{$bucket}.s3.{$this->_testConfig['host']}", $request->host);
+		$this->assertEqual("/{$name}?uploadId={$chunks['UploadId']}", $request->path);
+		$this->assertEqual('application/xml', $request->headers['Content-Type']);
+		$this->assertNotEqual("", $request->headers['Date']);
+		$date = $request->headers['Date'];
+		$this->assertEqual('POST', $request->method);
+		$text = simplexml_load_string('<CompleteMultipartUpload></CompleteMultipartUpload>');
+		$part = $text->addChild('Part');
+		$part->addChild('PartNumber', 1);
+		$part->addChild('ETag', 'foo1');
+		$part = $text->addChild('Part');
+		$part->addChild('PartNumber', 2);
+		$part->addChild('ETag', 'foo2');
+		$text = $text->asXML();
+		$md5 = base64_encode(md5($text, true));
+		$this->assertEqual($this->_encrypt("POST\n{$md5}\napplication/xml\n{$date}\n/{$bucket}/{$name}?uploadId={$chunks['UploadId']}"), $request->headers['Authorization']);
+		$this->assertEqual($text, $request->body);
+		$this->assertEqual($name, $entity->_id);
+        unlink($tmp_name);
+	}
+	
 	public function testCreateWithErrorAndNoEntity() {
 		$model = $this->_model;
 		$socket = $this->_testConfig['socket'];
@@ -330,6 +382,33 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertEqual(array('source' => 'quotes', 'creationdate' => '2006-02-03T16:45:09.000Z'), $result[0]->data());
 		$this->assertEqual(array('source' => 'samples', 'creationdate' => '2006-02-03T16:41:58.000Z'), $result[1]->data());
 		//test list buckets and ignore limit
+		$socket::$data = join("\r\n", array(
+			'HTTP/1.1 200 OK',
+			'x-amz-id-2: foo',
+			'x-amz-request-id: bar',
+			'Date: Wed, 01 Mar  2009 12:00:00 GMT',
+			'Content-Type: application/xml',
+			'Content-Length: 0',
+			'Connection: close',
+			'Server: AmazonS3',
+			)) . "\r\n\r\n";
+		$socket::$data .= '<?xml version="1.0" encoding="UTF-8"?>
+			<ListAllMyBucketsResult xmlns="http://doc.s3.amazonaws.com/2006-03-01">
+				<Owner>
+					<ID>bcaf1ffd86f461ca5fb16fd081034f</ID>
+					<DisplayName>webfile</DisplayName>
+				</Owner>
+				<Buckets>
+					<Bucket>
+						<Name>quotes</Name>
+						<CreationDate>2006-02-03T16:45:09.000Z</CreationDate>
+					</Bucket>
+					<Bucket>
+						<Name>samples</Name>
+						<CreationDate>2006-02-03T16:41:58.000Z</CreationDate>
+					</Bucket>
+				</Buckets>
+			</ListAllMyBucketsResult>';
 		$this->query = new Query(compact('model'));
 		$this->query->source('');
 		$this->query->limit(1);
@@ -483,6 +562,17 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertEqual('foo.txt', $result->_id);
 		$this->assertEqual($text, $result->file);
 		//read object and ignore limit
+		$socket::$data = join("\r\n", array(
+			'HTTP/1.1 200 OK',
+			'x-amz-id-2: foo',
+			'x-amz-request-id: bar',
+			'Date: Wed, 01 Mar  2009 12:00:00 GMT',
+			'Content-Type: text/plain',
+			'Content-Length: '.  strlen($text),
+			'Connection: close',
+			'Server: AmazonS3',
+			)) . "\r\n\r\n";
+		$socket::$data .= $text;
 		$this->query = new Query(compact('model'));
 		$this->query->conditions(array('_id' => 'foo.txt'));
 		$this->query->limit(1);

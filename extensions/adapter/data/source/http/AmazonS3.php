@@ -10,6 +10,8 @@ use li3_aws\data\AmazonS3File;
 
 class AmazonS3 extends \lithium\data\source\Http {
 
+	protected static $CHUNK_SIZE = 5242880;
+	
 	protected $_classes = array(
 		'service' => 'lithium\net\http\Service',
 		'entity'  => 'lithium\data\entity\Document',
@@ -115,7 +117,8 @@ class AmazonS3 extends \lithium\data\source\Http {
 		$headers = $this->_requestHeaders($pathConfig, $options);
 		$method = $pathConfig['method'];
 		$config = compact('headers', 'return') + array('host' => $pathConfig['host']);
-		if (isset($pathConfig['type'])) {
+		if (array_key_exists('type', $pathConfig) && $pathConfig['type'] !== null) {
+			//if 
 			$config['type'] = Media::type($pathConfig['type']);
 			//if no Media type found, set request _type flag to content-type and type flag to null, to pass Media handler 
 			if (!$config['type']) {
@@ -155,9 +158,84 @@ class AmazonS3 extends \lithium\data\source\Http {
 		return $response;
 	}
 	
-	protected function _multipleRequest(array $data, $query, array $pathConfig, array $options = array()) {
+	protected function _multipartUpload($query, array $pathConfig, array $options = array()) {
+		$defaults = array(
+			'retry'      => 1,
+			'chunk_size' => static::$CHUNK_SIZE,
+		);
+		$options += $defaults;
+		$file = $pathConfig['body'];
+		$options['md5'] = null; //md5 will be calculated for every chunk
+		$eTags = array();
+		$initConfig = array(
+			'method'  => 'POST',
+			'body'    => '',
+			'context' => array("uploads"),
+			'size'    => null,
+			'type'    => 'application/xml',
+			'path'    => "{$pathConfig['path']}?uploads",
+		) + $pathConfig;
+		$closeConfig = null;
+		$fh = fopen($file, 'r');
+		//init multipart upload
+		if ($initResponse = $this->_request($query, $initConfig, $options)) {
+			$xml = simplexml_load_string($initResponse->body);
+			$uploadId = (string)$xml->UploadId;
+			$uploadConfig = array(
+				'method'  => 'PUT',
+				'context' => compact('uploadId'),
+			) + $pathConfig;
+			//upload parts
+			$chunkSize = $options['chunk_size'];
+			$partNumber = 1;
+			$eof = false;
+			while (!$eof) {
+				$body = fread($fh, $chunkSize);
+				$eof = feof($fh);
+				$data = compact('body') + $uploadConfig;
+				$data['context'] += compact('partNumber');
+				$data['size'] = ($eof) ? strlen($body) : $chunkSize;
+				$data['path'] = "{$pathConfig['path']}?{$this->_encode($data['context'])}";
+				$uploadResponse = null;
+				for ($i=0; !$uploadResponse && $i < $options['retry']; $i++) {
+					$uploadResponse = $this->_request($query, $data, $options);
+				}
+				if (!$uploadResponse) {
+					return false;
+				}
+				$eTags[] = $uploadResponse->headers('ETag');
+				$partNumber++;
+			}
+			$body = simplexml_load_string('<CompleteMultipartUpload></CompleteMultipartUpload>');
+			for($i=1; $i<$partNumber; $i++) {
+				$part = $body->addChild('Part');
+				$part->addChild('PartNumber', $i);
+				$part->addChild('ETag', $eTags[$i-1]);
+			}
+			//close multipart upload
+			$closeConfig = array(
+				'body'    => $body->asXML(),
+				'context' => compact('uploadId'),
+				'path'    => "{$pathConfig['path']}?{$this->_encode(compact('uploadId'))}",
+			) + $initConfig;
+			if ($response = $this->_request($query, $closeConfig, $options)) {
+				$entity = $query->entity();
+				if (($type = $response->headers('Content-Type')) && strpos($type, 'xml') && $entity) {
+					$xml = simplexml_load_string($response->body);
+					if ($xml->getName() == 'Error') {
+						$entity->errors($pathConfig['source'], (string)$xml->Message);
+						return false;
+					}
+				}
+			}
+		}
+		fclose($fh);
+		return $response;
+	}
+	
+	protected function _multipleRequest($query, array $pathConfig, array $options = array()) {
 		$responses = array();
-		foreach ($data as $requestBody) {
+		foreach ($pathConfig['body'] as $requestBody) {
 			$pathConfig['body'] = $requestBody;
 			$responses[] = $this->_request($query, $pathConfig, $options);
  		}
@@ -382,6 +460,12 @@ class AmazonS3 extends \lithium\data\source\Http {
 	}
 	
 	public function create($query, array $options = array()) {
+		$defaults = array(
+			'multipart' => true,
+			'retry'     => 10, //retry upload on error
+			'chunk_size' => static::$CHUNK_SIZE,
+		);
+		$options += $defaults;
 		$params = $query->export($this, array('keys' => array('source', 'conditions')));
 		$source = (!empty($params['source'])) ? array('source' => $params['source']) : array();
 		$conditions = $params['conditions'] + $source;
@@ -394,17 +478,20 @@ class AmazonS3 extends \lithium\data\source\Http {
 			'method' => 'PUT',
 			);
 		$data = $query->data();
+		$multipart = $options['multipart'];
 		$uploadKeys = array('name', 'type', 'tmp_name', 'error', 'size');
 		switch (true) {
 			case (array_key_exists('file', $data) && (array_keys($data['file']) == $uploadKeys)):
 				$file = $data['file'];
 				unset($data['file']);
-				$pathConfig['body'] = file_exists($file['tmp_name']) ? file_get_contents($file['tmp_name']) : $file['tmp_name'];
 				$data += $file;
+				$fileExist = file_exists($file['tmp_name']);
+				$multipart = $multipart && $fileExist && $file['size'] > $options['chunk_size'];
+				$pathConfig['body'] = ($fileExist && !$multipart) ? file_get_contents($file['tmp_name']) : $file['tmp_name'];
 			break;
 			case ($source):
 				$pathConfig['type'] = 'application/xml';
-				//$config['type'] = 'xml';
+				$multipart = false;
 				if (array_key_exists('region', $data)) {
 					$region = array_search($data['region'], $this->_regions);
 					if ($region === false) {
@@ -420,7 +507,8 @@ class AmazonS3 extends \lithium\data\source\Http {
 				return false;
 		}
 		$pathConfig += $conditions + $data;
-		if (!$response = $this->_request($query, $pathConfig, $options)) {
+		$response = ($multipart) ? $this->_multipartUpload($query, $pathConfig, $options) : $this->_request($query, $pathConfig, $options);
+		if (!$response) {
 			return false;
 		}
 		$entity = $query->entity();
@@ -480,7 +568,8 @@ class AmazonS3 extends \lithium\data\source\Http {
 				$buildObjects($xmlElem, $chunk);
 				$requestBodys[] = $xmlElem->asXML();
 			}
-			$responses = $this->_multipleRequest($requestBodys, $query, $conditions + $pathConfig + compact('method'));
+			$pathConfig['body'] = $requestBodys;
+			$responses = $this->_multipleRequest($query, $conditions + $pathConfig + compact('method'));
 			foreach ($responses as $response) {
 				if ($response && strpos($response->headers['Content-Type'], 'xml')) {
 					$xml = simplexml_load_string($response->body);

@@ -14,6 +14,7 @@ class MockAmazonSocket extends \lithium\net\Socket {
 	public static $data = '';
 	protected $_fp;
 	public static $buckets = array();
+	public static $temp = array();
 	public $request;
 	
 	protected function _insert($host, $path = null, array $data = array()) {
@@ -101,7 +102,9 @@ class MockAmazonSocket extends \lithium\net\Socket {
 	}
 
 	public function read() {
-		return (empty(static::$data)) ? $this->_response : static::$data;
+		$data = static::$data;
+		static::$data = null;
+		return (empty($data)) ? $this->_response : $data;
 	}
 
 	public static function resetData() {
@@ -123,6 +126,7 @@ class MockAmazonSocket extends \lithium\net\Socket {
 					'x-amz-request-id' => 'bar',
 					'Date' => 'Fri, 02 Dec 2011 01:53:42 GMT',
 				);
+				//delete multiple objects
 				if (array_key_exists('query', $path) && $path['query'] == 'delete') {
 					$xml = simplexml_load_string($data->body);
 					foreach($xml->children() as $object) {
@@ -135,6 +139,61 @@ class MockAmazonSocket extends \lithium\net\Socket {
 						'Content-Type' => 'application/xml',
 						'Content-Length' => strlen($response->body),
 					);
+				// multipart upload Init
+				} else if (array_key_exists('query', $path) && $path['query'] == 'uploads') {
+					$bucket = explode('.', $path['host']);
+					static::$temp = array(
+						'UploadId' => 'foo',
+						'Key'      => ltrim($path['path'], '/'),
+						'Bucket'   => $bucket[0],
+					);
+					$xml = simplexml_load_string('<InitiateMultipartUploadResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"></InitiateMultipartUploadResult>');
+					foreach(static::$temp as $key => $val) {
+						$xml->addChild($key, $val);
+					}
+					$response->body = $xml->asXML();
+					$response->headers += array(
+						'Content-Type' => 'application/xml',
+						'Content-Length' => strlen($response->body),
+					);
+				//multipart upload chunk
+				} else if (array_key_exists('query', $path) && strpos($path['query'], 'uploadId') !== false && strpos($path['query'], 'partNumber') !== false) {
+					parse_str($path['query'], $query);
+					if ($query['uploadId'] != static::$temp['UploadId']) {
+						$response->status['code'] = 404;
+					} else {
+						static::$temp['data'][$query['partNumber']] = $data->body;
+						$response->headers('ETag', $query['uploadId'].$query['partNumber']);
+					}
+				//multipart upload complete
+				} else if (array_key_exists('query', $path) && strpos($path['query'], 'uploadId') !== false) {
+					parse_str($path['query'], $query);
+					if ($query['uploadId'] != static::$temp['UploadId']) {
+						$response->status['code'] = 404;
+					} else {
+						$xml = simplexml_load_string($data->body);
+						$success = $xml->getName() == 'CompleteMultipartUpload';
+						$combinedData = '';
+						foreach ($xml as $part) {
+							$num = (int)$part->PartNumber;
+							$success = $success && isset(static::$temp['data'][$num]);
+							$success = $success && $part->ETag == static::$temp['UploadId'].$num;
+							if ($success) {
+								$combinedData .= static::$temp['data'][$num];
+							}
+						}
+						$success = $success && $this->_insert($path['host'], $path['path'], array('headers' => $data->headers, 'body' => $combinedData));
+						if ($success) {
+							$xml = simplexml_load_string('<CompleteMultipartUploadResult></CompleteMultipartUploadResult>');
+							$response->body = $xml->asXML();
+						} else {
+							$response->status['code'] = 404;
+							$xml = simplexml_load_string('<Error></Error>');
+							$xml->addChild('Code', 'InvalidPart');
+							$xml->addChild('Message', 'InvalidPart');
+							$response->body = $xml->asXML();
+						}
+					}
 				} else {
 					$this->_insert($path['host'], $path['path'], array('headers' => $data->headers, 'body' => $data->body));
 				}

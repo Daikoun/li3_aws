@@ -4,11 +4,13 @@ namespace li3_aws\extensions\adapter\data\source\http;
 
 use lithium\net\http\Media;
 use lithium\util\String;
+use lithium\util\Inflector;
+use lithium\data\model\QueryException;
 use li3_aws\data\AmazonS3File;
 
 class AmazonS3 extends \lithium\data\source\Http {
 
-	protected static $CHUNK_SIZE = 5242880;
+	protected static $CHUNK_SIZE = 5242880; //5MB
 	
 	protected $_classes = array(
 		'service' => 'lithium\net\http\Service',
@@ -420,8 +422,17 @@ class AmazonS3 extends \lithium\data\source\Http {
 		$model = $context->model();
 		$key = $model::key();
 		$data = $context->data();
-		if (!isset($conditions[$key]) && isset($data['file']) && isset($data['file']['name'])) {
-			$conditions['object'] = $data['file']['name'];
+		if (!isset($conditions[$key]) && isset($data['file'])) {
+			switch(true) {
+				case (is_array($data['file']) && isset($data['file']['name'])) :
+					$conditions['object'] = $data['file']['name'];
+					break;
+				case ($context->md5()) :
+					$conditions['object'] = $context->md5();
+					break;
+				default :
+					$conditions['object'] = md5($data['file']);
+			}
 		}
 		if (isset($conditions[$key])) {
 			$conditions['object'] = $conditions[$key];
@@ -477,10 +488,16 @@ class AmazonS3 extends \lithium\data\source\Http {
 			);
 		$data = $query->data();
 		$multipart = $options['multipart'];
-		$uploadKeys = array('name', 'type', 'tmp_name', 'error', 'size');
 		switch (true) {
-			case (array_key_exists('file', $data) && (array_keys($data['file']) == $uploadKeys)):
-				$file = $data['file'];
+			case (array_key_exists('file', $data)):
+				$uploadKeys = array('name', 'type', 'tmp_name', 'error', 'size');
+				//if file is just a bytestream, set default parameters 
+				$file = (is_array($data['file']) && array_keys($data['file']) == $uploadKeys) ? 
+					$data['file'] : 
+					array(
+						'tmp_name' => $data['file'],
+						'type'     => 'application/octet-stream',
+					);
 				unset($data['file']);
 				$data += $file;
 				$fileExist = file_exists($file['tmp_name']);

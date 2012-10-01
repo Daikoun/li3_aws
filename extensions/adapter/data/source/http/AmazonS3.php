@@ -4,8 +4,6 @@ namespace li3_aws\extensions\adapter\data\source\http;
 
 use lithium\net\http\Media;
 use lithium\util\String;
-use lithium\util\Inflector;
-use lithium\data\model\QueryException;
 use li3_aws\data\AmazonS3File;
 
 class AmazonS3 extends \lithium\data\source\Http {

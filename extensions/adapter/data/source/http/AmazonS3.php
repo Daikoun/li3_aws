@@ -172,13 +172,13 @@ class AmazonS3 extends \lithium\data\source\Http {
 			'body'    => '',
 			'context' => array("uploads"),
 			'size'    => null,
-			'type'    => 'application/xml',
 			'path'    => "{$pathConfig['path']}?uploads",
 		) + $pathConfig;
 		$closeConfig = null;
 		$fh = fopen($file, 'r');
 		//init multipart upload
 		if ($initResponse = $this->_request($query, $initConfig, $options)) {
+			unset($options['encryption']); //remove encryption setup on uploading parts
 			$xml = simplexml_load_string($initResponse->body);
 			$uploadId = (string)$xml->UploadId;
 			$uploadConfig = array(
@@ -194,6 +194,7 @@ class AmazonS3 extends \lithium\data\source\Http {
 				$eof = feof($fh);
 				$data = compact('body') + $uploadConfig;
 				$data['context'] += compact('partNumber');
+				$data['type'] = 'application/octet-stream';
 				$data['size'] = ($eof) ? strlen($body) : $chunkSize;
 				$data['path'] = "{$pathConfig['path']}?{$this->_encode($data['context'])}";
 				$uploadResponse = null;
@@ -215,6 +216,7 @@ class AmazonS3 extends \lithium\data\source\Http {
 			//close multipart upload
 			$closeConfig = array(
 				'body'    => $body->asXML(),
+				'type'    => 'application/xml',
 				'context' => compact('uploadId'),
 				'path'    => "{$pathConfig['path']}?{$this->_encode(compact('uploadId'))}",
 			) + $initConfig;
@@ -263,10 +265,16 @@ class AmazonS3 extends \lithium\data\source\Http {
 			$date = gmdate('r'); // GMT based timestamp
 			$headers['Date'] = $date;
 		}
+		if (isset($options['encryption'])) {
+			$amz_headers['x-amz-server-side-encryption'] = $options['encryption'];
+		}
+		//add amz headers
+		$headers += $amz_headers;
 		arsort($amz_headers);
 		$canonicalizedAmzHeaders = "";
 		foreach ($amz_headers as $key => $val) {
-			$canonicalizedAmzHeaders .= strtolower("{$key}:{$val}\n");
+			$key =  strtolower($key);
+			$canonicalizedAmzHeaders .= "{$key}:{$val}\n";
 		}
 		if ($params['type']) {
 			$headers['Content-Type'] = $params['type'];
@@ -283,6 +291,7 @@ class AmazonS3 extends \lithium\data\source\Http {
 			$contentMD5 = base64_encode($contentMD5);
 			$headers['Content-MD5'] = $contentMD5;
 		}
+		
 		$canonicalizedResource = (empty($params['source'])) ? "" : "/{$params['source']}";
 		$canonicalizedResource.= "/{$params['object']}";
 		if (!empty($params['context'])) {
@@ -473,6 +482,7 @@ class AmazonS3 extends \lithium\data\source\Http {
 			'multipart' => true,
 			'retry'     => 10, //retry upload on error
 			'chunk_size' => static::$CHUNK_SIZE,
+			'encryption' => null,
 		);
 		$options += $defaults;
 		$params = $query->export($this, array('keys' => array('source', 'conditions')));

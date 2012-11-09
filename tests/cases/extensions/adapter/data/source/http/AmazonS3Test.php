@@ -210,6 +210,30 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertEqual($text, $request->body);
 		$this->assertEqual($name, $entity->_id);
         unlink($tmp_name);
+		
+		//upload just file contents and set encryption to AES256
+		$entity = new Document(compact('model'));
+		$this->query = new Query(compact('model', 'entity') + array('type' => 'create'));
+		$text = "Testfile contents.";
+		$this->query->data(array(
+			'file' => $text,
+		));
+		$fileName = md5($text);
+		$result = $this->db->create($this->query, array('encryption' => 'AES256'));
+		$this->assertTrue($result);
+		$request = $this->db->last->request;
+		$this->assertEqual("{$bucket}.s3.{$this->_testConfig['host']}", $request->host);
+		$this->assertEqual("/{$fileName}", $request->path);
+		$this->assertEqual('AES256', $request->headers['x-amz-server-side-encryption']);
+		$this->assertEqual('application/octet-stream', $request->headers['Content-Type']);
+		$this->assertEqual(strlen($text), $request->headers['Content-Length']);
+		$this->assertNotEqual("", $request->headers['Date']);
+		$date = $request->headers['Date'];
+		$this->assertEqual('PUT', $request->method);
+		$md5 = base64_encode(md5($text, true));
+		$this->assertEqual($this->_encrypt("PUT\n{$md5}\napplication/octet-stream\n{$date}\nx-amz-server-side-encryption:AES256\n/{$bucket}/{$fileName}"), $request->headers['Authorization']);
+		$this->assertEqual($text, $request->body);
+		$this->assertEqual($fileName, $entity->_id);
 		//upload file but bucket do not exist
 		$socket::$data = join("\r\n", array(
 			'HTTP/1.1 404 Not Found',
@@ -270,12 +294,49 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$result = $this->db->create($this->query, array('chunk_size' => 716800)); //chunk size 700kB
 		$this->assertTrue($result);
 		$chunks = $socket::$temp;
+		$this->assertEqual(4, count($socket::$requests));
 		$this->assertEqual('foo', $chunks['UploadId']);
 		$this->assertEqual($name, $chunks['Key']);
 		$this->assertEqual($bucket, $chunks['Bucket']);
 		$this->assertEqual(2, count($chunks['data']));
 		$this->assertEqual(716800, strlen($chunks['data'][1]));
 		$this->assertEqual(1048576-716800, strlen($chunks['data'][2]));
+		//test init multipart
+		$request = $socket::$requests[0];
+		$this->assertEqual("{$bucket}.s3.{$this->_testConfig['host']}", $request->host);
+		$this->assertEqual("/{$name}?uploads", $request->path);
+		$this->assertEqual($type, $request->headers['Content-Type']);
+		$this->assertEqual(0, $request->headers['Content-Length']);
+		$this->assertNotEqual("", $request->headers['Date']);
+		$date = $request->headers['Date'];
+		$this->assertEqual('POST', $request->method);
+		$md5 = base64_encode(md5($text, true));
+		$this->assertEqual($this->_encrypt("POST\n\n{$type}\n{$date}\n/{$bucket}/{$name}?uploads"), $request->headers['Authorization']);
+		$this->assertEqual('', $request->body);
+		//test first part upload
+		$request = $socket::$requests[1];
+		$this->assertEqual("{$bucket}.s3.{$this->_testConfig['host']}", $request->host);
+		$this->assertEqual("/{$name}?uploadId={$chunks['UploadId']}&partNumber=1", $request->path);
+		$this->assertEqual('application/octet-stream', $request->headers['Content-Type']);
+		$this->assertEqual(716800, $request->headers['Content-Length']);
+		$this->assertNotEqual("", $request->headers['Date']);
+		$date = $request->headers['Date'];
+		$this->assertEqual('PUT', $request->method);
+		$md5 = base64_encode(md5(str_repeat('a', 716800), true));
+		$this->assertEqual($this->_encrypt("PUT\n{$md5}\napplication/octet-stream\n{$date}\n/{$bucket}/{$name}?partNumber=1&uploadId={$chunks['UploadId']}"), $request->headers['Authorization']);
+		$this->assertEqual(str_repeat('a', 716800), $request->body);
+		$request = $socket::$requests[2];
+		$this->assertEqual("{$bucket}.s3.{$this->_testConfig['host']}", $request->host);
+		$this->assertEqual("/{$name}?uploadId={$chunks['UploadId']}&partNumber=2", $request->path);
+		$this->assertEqual('application/octet-stream', $request->headers['Content-Type']);
+		$this->assertEqual(1048576-716800, $request->headers['Content-Length']);
+		$this->assertNotEqual("", $request->headers['Date']);
+		$date = $request->headers['Date'];
+		$this->assertEqual('PUT', $request->method);
+		$md5 = base64_encode(md5(str_repeat('a', 1048576-716800), true));
+		$this->assertEqual($this->_encrypt("PUT\n{$md5}\napplication/octet-stream\n{$date}\n/{$bucket}/{$name}?partNumber=2&uploadId={$chunks['UploadId']}"), $request->headers['Authorization']);
+		$this->assertEqual(str_repeat('a', 1048576-716800), $request->body);
+		//test last request
 		$request = $this->db->last->request;
 		$this->assertEqual("{$bucket}.s3.{$this->_testConfig['host']}", $request->host);
 		$this->assertEqual("/{$name}?uploadId={$chunks['UploadId']}", $request->path);
@@ -295,7 +356,87 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertEqual($this->_encrypt("POST\n{$md5}\napplication/xml\n{$date}\n/{$bucket}/{$name}?uploadId={$chunks['UploadId']}"), $request->headers['Authorization']);
 		$this->assertEqual($text, $request->body);
 		$this->assertEqual($name, $entity->_id);
-        unlink($tmp_name);
+		
+		$socket::resetData();
+		
+		//test multipart upload with encryption is set to AES256
+		$entity = new Document(compact('model'));
+		$this->query = new Query(compact('model', 'entity') + array('type' => 'create'));
+		$this->query->data(array(
+			'file' => compact('name', 'type', 'tmp_name', 'error', 'size'),
+		));
+		$result = $this->db->create($this->query, array('chunk_size' => 716800, 'encryption' => 'AES256')); //chunk size 700kB
+		$this->assertTrue($result);
+		$chunks = $socket::$temp;
+		$this->assertEqual(4, count($socket::$requests));
+		$this->assertEqual('foo', $chunks['UploadId']);
+		$this->assertEqual($name, $chunks['Key']);
+		$this->assertEqual($bucket, $chunks['Bucket']);
+		$this->assertEqual(2, count($chunks['data']));
+		$this->assertEqual(716800, strlen($chunks['data'][1]));
+		$this->assertEqual(1048576-716800, strlen($chunks['data'][2]));
+		//test init multipart
+		$request = $socket::$requests[0];
+		$this->assertEqual("{$bucket}.s3.{$this->_testConfig['host']}", $request->host);
+		$this->assertEqual("/{$name}?uploads", $request->path);
+		$this->assertEqual($type, $request->headers['Content-Type']);
+		$this->assertEqual(0, $request->headers['Content-Length']);
+		$this->assertEqual('AES256', $request->headers['x-amz-server-side-encryption']);
+		$this->assertNotEqual("", $request->headers['Date']);
+		$date = $request->headers['Date'];
+		$this->assertEqual('POST', $request->method);
+		$md5 = base64_encode(md5($text, true));
+		$this->assertEqual($this->_encrypt("POST\n\n{$type}\n{$date}\nx-amz-server-side-encryption:AES256\n/{$bucket}/{$name}?uploads"), $request->headers['Authorization']);
+		$this->assertEqual('', $request->body);
+		//test first part upload
+		$request = $socket::$requests[1];
+		$this->assertEqual("{$bucket}.s3.{$this->_testConfig['host']}", $request->host);
+		$this->assertEqual("/{$name}?uploadId={$chunks['UploadId']}&partNumber=1", $request->path);
+		$this->assertEqual('application/octet-stream', $request->headers['Content-Type']);
+		$this->assertEqual(716800, $request->headers['Content-Length']);
+		$this->assertFalse(isset($request->headers['x-amz-server-side-encryption']));
+		$this->assertNotEqual("", $request->headers['Date']);
+		$date = $request->headers['Date'];
+		$this->assertEqual('PUT', $request->method);
+		$md5 = base64_encode(md5(str_repeat('a', 716800), true));
+		$this->assertEqual($this->_encrypt("PUT\n{$md5}\napplication/octet-stream\n{$date}\n/{$bucket}/{$name}?partNumber=1&uploadId={$chunks['UploadId']}"), $request->headers['Authorization']);
+		$this->assertEqual(str_repeat('a', 716800), $request->body);
+		$request = $socket::$requests[2];
+		$this->assertEqual("{$bucket}.s3.{$this->_testConfig['host']}", $request->host);
+		$this->assertEqual("/{$name}?uploadId={$chunks['UploadId']}&partNumber=2", $request->path);
+		$this->assertEqual('application/octet-stream', $request->headers['Content-Type']);
+		$this->assertEqual(1048576-716800, $request->headers['Content-Length']);
+		$this->assertFalse(isset($request->headers['x-amz-server-side-encryption']));
+		$this->assertNotEqual("", $request->headers['Date']);
+		$date = $request->headers['Date'];
+		$this->assertEqual('PUT', $request->method);
+		$md5 = base64_encode(md5(str_repeat('a', 1048576-716800), true));
+		$this->assertEqual($this->_encrypt("PUT\n{$md5}\napplication/octet-stream\n{$date}\n/{$bucket}/{$name}?partNumber=2&uploadId={$chunks['UploadId']}"), $request->headers['Authorization']);
+		$this->assertEqual(str_repeat('a', 1048576-716800), $request->body);
+		//test last request
+		$request = $this->db->last->request;
+		$this->assertEqual("{$bucket}.s3.{$this->_testConfig['host']}", $request->host);
+		$this->assertEqual("/{$name}?uploadId={$chunks['UploadId']}", $request->path);
+		$this->assertEqual('application/xml', $request->headers['Content-Type']);
+		$this->assertFalse(isset($request->headers['x-amz-server-side-encryption']));
+		$this->assertNotEqual("", $request->headers['Date']);
+		$date = $request->headers['Date'];
+		$this->assertEqual('POST', $request->method);
+		$text = simplexml_load_string('<CompleteMultipartUpload></CompleteMultipartUpload>');
+		$part = $text->addChild('Part');
+		$part->addChild('PartNumber', 1);
+		$part->addChild('ETag', 'foo1');
+		$part = $text->addChild('Part');
+		$part->addChild('PartNumber', 2);
+		$part->addChild('ETag', 'foo2');
+		$text = $text->asXML();
+		$md5 = base64_encode(md5($text, true));
+		$this->assertEqual($this->_encrypt("POST\n{$md5}\napplication/xml\n{$date}\n/{$bucket}/{$name}?uploadId={$chunks['UploadId']}"), $request->headers['Authorization']);
+		$this->assertEqual($text, $request->body);
+		$this->assertEqual($name, $entity->_id);
+
+		unlink($tmp_name);
+		
 	}
 	
 	public function testCreateWithErrorAndNoEntity() {

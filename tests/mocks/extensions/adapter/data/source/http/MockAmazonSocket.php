@@ -15,7 +15,7 @@ class MockAmazonSocket extends \lithium\net\Socket {
 	protected $_fp;
 	public static $buckets = array();
 	public static $temp = array();
-	public $request;
+	public static $requests;
 	
 	protected function _insert($host, $path = null, array $data = array()) {
 		$path = ltrim($path, '/');
@@ -110,12 +110,15 @@ class MockAmazonSocket extends \lithium\net\Socket {
 	public static function resetData() {
 		static::$buckets = array();
 		static::$data = '';
+		static::$requests = array();
 	}
 
 
 	public function write($data) {
 		$url = $data->to('url');
 		$path = parse_url($url);
+		static::$requests[] = $data;
+		$requests = static::$requests;
 		$data->body = implode('', (array)$data->body);
 		$response = $this->_instance($data->return);
 		switch ($data->method) {

@@ -144,10 +144,10 @@ class AmazonS3 extends \lithium\data\source\Http {
 			default:
 				$response = $this->connection->send($method, $pathConfig['path'], $pathConfig['body'], $config);
 		}
-		$statusCode = $response->status['code'];
+		$statusCode = ($response) ? $response->status['code'] : '409'; // set to 409 Conflict, if no response
 		if ($statusCode != '200' && $statusCode != '204') {
 			$entity = $query->entity();
-			if (($type = $response->headers('Content-Type')) && strpos($type, 'xml') && $entity) {
+			if ($response && ($type = $response->headers('Content-Type')) && strpos($type, 'xml') && $entity) {
 				$xml = simplexml_load_string($response->body);
 				if ($xml) {
 					$entity->errors($pathConfig['source'], (string)$xml->Message);

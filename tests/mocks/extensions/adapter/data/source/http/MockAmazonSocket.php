@@ -120,7 +120,7 @@ class MockAmazonSocket extends \lithium\net\Socket {
 		static::$requests[] = $data;
 		$requests = static::$requests;
 		$data->body = implode('', (array)$data->body);
-		$response = $this->_instance($data->return);
+		$response = $this->_instance('response');
 		switch ($data->method) {
 			case 'PUT' :
 			case 'POST' :

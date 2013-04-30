@@ -487,7 +487,7 @@ class AmazonS3 extends \lithium\data\source\Http {
 		$options += $defaults;
 		$params = $query->export($this, array('keys' => array('source', 'conditions')));
 		$source = (!empty($params['source'])) ? array('source' => $params['source']) : array();
-		$conditions = $params['conditions'] + $source;
+		$conditions = ($params['conditions'] ?: array()) + $source;
 		$source = (isset($conditions['source'])) ? $conditions['source'] : null;
 		if (!$pathConfig = $this->_path(__FUNCTION__, $conditions)) {
 			return false;

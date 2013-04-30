@@ -14,12 +14,12 @@ Clone the plugin into the `libraries` folder of your lithium application.
 git clone git://github.com/Daikoun/li3_aws.git my_lithium_app/libraries
 ```
 
-Enable the plugin in `my_lithium_app/app/config/libraries.php`.
+Enable the plugin in `my_lithium_app/app/config/bootstrap/libraries.php`.
 
 ```php
 Libraries::add('li3_aws');
 ```
-Setup the connection to Amazon S3 in `my_lithium_app/app/config/connections.php`.
+Setup the connection to Amazon S3 in `my_lithium_app/app/config/bootstrap/connections.php`.
 
 ```php
 Connections::add('amazon_s3', array(

@@ -2,6 +2,8 @@ li3_aws
 =======
 
 Lithium plugin for accessing Amazon Web Services.
+Current services to use:
+* Amazon S3
 
 How to install?
 ---------------
@@ -74,7 +76,7 @@ In your controller, you can do file uploads the same way you do that in MongoDB-
 		$picture = Pictures::create();
 
 		if (($this->request->data) && $picture->save($this->request->data)) {
-			return $this->redirect(array('Pictures::view', 'args' => array($test->_id)));
+			return $this->redirect(array('Pictures::view', 'args' => array($picture->_id)));
 		}
 		return compact('test');
 	}
@@ -101,7 +103,7 @@ Download files from your bucket:
 The structure is similar to use Mongo-GridFs, so that you can easily exchange the storage without changing any source code, just by set the connection in bootstrap.
 For optimizing downloads from S3, an additional Streamwrapper-Method is implemented.
 
-1. Without StreamWrapper:
+a) Without StreamWrapper:
 
 Using this method, the file contents are buffered in the PHP memory before you can access them. This can cause memory exceptions, if file size exceeds the PHP memory and also slows down the download process because you have to wait till the whole file is buffered.
 
@@ -117,7 +119,7 @@ Using this method, the file contents are buffered in the PHP memory before you c
 
 `$picture->file` contains the file-contents stored as plain text or binary image data.
 
-2. With StreamWrapper:
+b) With StreamWrapper:
 
 By using the StreamWrapper you can avoid buffering the file contents. The StreamWrapper helps you to directly pipe the file contents to the output. Another benefit, you can soon provide the download response.
 
@@ -150,13 +152,13 @@ In this case `$picture->file` is the StreamWrapper-Class `li3_aws/data/AmazonS3F
 	}
 ``` 
 
-By using `getResource()` you can minimize buffering and pipe the contents soon to output.
+By using `getResource()` you can minimize buffering and pipe the contents to output soon.
 
 
 Delete Files from your Bucket:
 ------------------------------
 
-1. Use Entity: 
+a) Use Entity: 
 
 If you use entity, you need two requests to S3. By using the StreamWrapper you can optimize the first request a little bit.
 
@@ -172,7 +174,7 @@ If you use entity, you need two requests to S3. By using the StreamWrapper you c
 	}
 ```
 
-2. Use Model: 
+b) Use Model: 
 
 The preferred way is to use Model directly to delete the File where only one request is needed.
 

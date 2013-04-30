@@ -78,7 +78,7 @@ In your controller, you can do file uploads the same way you do that in MongoDB-
 		if (($this->request->data) && $picture->save($this->request->data)) {
 			return $this->redirect(array('Pictures::view', 'args' => array($picture->_id)));
 		}
-		return compact('test');
+		return compact('picture');
 	}
 ```
 
@@ -93,7 +93,7 @@ Store files encrypted in S3.
 		if (($this->request->data) && $picture->save($this->request->data, array('encryption' => 'AES256'))) {
 			return $this->redirect(array('Pictures::view', 'args' => array($picture->_id)));
 		}
-		return compact('test');
+		return compact('picture');
 	}
 ```
 
@@ -124,7 +124,8 @@ Using this method, the file contents are buffered in the PHP memory before you c
 	public function view() {
 		$picture = Pictures::first($this->request->id);
 		$this->_render['auto'] = false;
-		$this->response->headers('Content-Type', 'image/jpeg');
+		$this->response->headers('Content-Type', $picture->headers['Content-Type']);
+		$this->response->headers('Content-Length', $picture->headers['Content-Length']);
 		$this->response->body = $picture->file;
 		return $this->response;
 	}
@@ -141,7 +142,8 @@ By using the StreamWrapper you can avoid buffering the file contents. The Stream
 		$id = $this->request->id;
 		$picture = Pictures::first(array('conditions' => array('_id' => $id), 'return' => 'stream'));
 		$this->_render['auto'] = false;
-		$this->response->headers('Content-Type', 'image/jpeg');
+		$this->response->headers('Content-Type', $picture->headers['Content-Type']);
+		$this->response->headers('Content-Length', $picture->headers['Content-Length']);
 		$this->response->body = $picture->file->getBytes();
 		return $this->response;
 	}
@@ -155,8 +157,9 @@ In this case `$picture->file` is the StreamWrapper-Class `li3_aws/data/AmazonS3F
 		$id = $this->request->id;
 		$picture = Pictures::first(array('conditions' => array('_id' => $id), 'return' => 'stream'));
 		$this->_render['auto'] = false;
-		header("Content-Type: image/jpeg");
-		$stream = $foto->file->getResource();
+		header("Content-Type: {$picture->headers['Content-Type']}");
+		header("Content-Length: {$picture->headers['Content-Length']}");
+		$stream = $picture->file->getResource();
 		while (!feof($stream)) {
 			echo fgets($stream, 16384);
 		} 
@@ -201,6 +204,12 @@ The preferred way is to use Model directly to delete the File where only one req
 		Pictures::remove(array('_id' => $this->request->id));
 		return $this->redirect('Pictures::index');
 	}
+```
+
+Using the Model allows you to delete multiple files in one request.
+
+```php
+	Pictures::remove(array('_id' => array('foo.jpg', 'bar.jpg'));
 ```
 
 Test Cases:

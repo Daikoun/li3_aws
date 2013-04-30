@@ -116,7 +116,7 @@ class AmazonS3 extends \lithium\data\source\Http {
 		$return = $options['return'];
 		$headers = $this->_requestHeaders($pathConfig, $options);
 		$method = $pathConfig['method'];
-		$config = compact('headers', 'return') + array('host' => $pathConfig['host']);
+		$config = compact('headers', 'return') + array('host' => $pathConfig['host'], 'type' => null);
 		if (array_key_exists('type', $pathConfig) && $pathConfig['type'] !== null) {
 			//if 
 			$config['type'] = Media::type($pathConfig['type']);

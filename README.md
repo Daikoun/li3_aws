@@ -84,6 +84,19 @@ In your controller, you can do file uploads the same way you do that in MongoDB-
 
 Where the request can contain an uploaded file by using a HTML form.
 
+Store files encrypted in S3.
+
+```php
+	public function add() {
+		$picture = Pictures::create();
+
+		if (($this->request->data) && $picture->save($this->request->data, array('encryption' => 'AES256'))) {
+			return $this->redirect(array('Pictures::view', 'args' => array($picture->_id)));
+		}
+		return compact('test');
+	}
+```
+
 List files in your bucket:
 ---------------------------
 

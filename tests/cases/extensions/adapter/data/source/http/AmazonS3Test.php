@@ -74,6 +74,7 @@ class AmazonS3Test extends \lithium\test\Unit {
 	}
 
 	public function testDescribe() {
+		$this->skipif(!class_exists('\lithium\data\DocumentSchema'));
 		$this->assertTrue(is_object($this->db->describe('companies')));
 	}
 

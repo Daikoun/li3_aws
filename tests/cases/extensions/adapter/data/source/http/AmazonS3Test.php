@@ -74,7 +74,7 @@ class AmazonS3Test extends \lithium\test\Unit {
 	}
 
 	public function testDescribe() {
-		$this->assertEqual(array(), $this->db->describe('companies'));
+		$this->assertTrue(is_object($this->db->describe('companies')));
 	}
 
 	public function testItem() {
@@ -101,21 +101,20 @@ class AmazonS3Test extends \lithium\test\Unit {
 			)) . "\r\n\r\n";
 		$bucket = 'foo-bucket1';
 		$model::meta('source', $bucket);
-//		$entity = new Document(compact('model'));
-//		$this->query = new Query(compact('model', 'entity'));
-//		$result = $this->db->create($this->query);
-//		$this->assertTrue($result);
-//		$request = $this->db->last->request;
-//		$this->assertEqual("{$bucket}.s3.{$this->_testConfig['host']}", $request->host);
-//		$this->assertEqual("/", $request->path);
-//		$this->assertEqual('application/xml', $request->headers['Content-Type']);
-//		$this->assertEqual(0, $request->headers['Content-Length']);
-//		$this->assertNotEqual("", $request->headers['Date']);
-//		$date = $request->headers['Date'];
-//		$this->assertEqual('PUT', $request->method);
-//		$this->assertEqual($this->_encrypt("PUT\n\napplication/xml\n{$date}\n/{$bucket}/"), $request->headers['Authorization']);
-//		$this->assertEqual('', $request->body);
-//		$this->assertNull($entity->_id);
+		$this->query = new Query(compact('model'));
+		$result = $this->db->create($this->query);
+		$this->assertTrue($result);
+		$request = $this->db->last->request;
+		$this->assertEqual("{$bucket}.s3.{$this->_testConfig['host']}", $request->host);
+		$this->assertEqual("/", $request->path);
+		$this->assertEqual('application/xml', $request->headers['Content-Type']);
+		$this->assertEqual(0, $request->headers['Content-Length']);
+		$this->assertNotEqual("", $request->headers['Date']);
+		$date = $request->headers['Date'];
+		$this->assertEqual('PUT', $request->method);
+		$this->assertEqual($this->_encrypt("PUT\n\napplication/xml\n{$date}\n/{$bucket}/"), $request->headers['Authorization']);
+		$this->assertEqual('', $request->body);
+		//$this->assertNull($entity->_id);
 		//create file without specifying an id but setting file-size
 		$model::meta('source', $bucket);
 		$entity = new Document(compact('model'));

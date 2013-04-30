@@ -23,7 +23,14 @@ class AmazonS3Test extends \lithium\test\Unit {
 
 	protected $_model = 'li3_aws\tests\mocks\extensions\adapter\data\source\http\MockAmazonPost';
 
-	protected function _encrypt($string2sign) {
+	protected function _encrypt($request, array $options = array()) {
+		$defaults = array(
+			'Content-MD5'         => '',
+			'CanonicalAmzHeaders' => '',
+			'CanonicalResource'   => '',
+		);
+		$options += $defaults;
+		$string2sign = "{$request->method}\n{$options['Content-MD5']}\n{$request->headers('Content-Type')}\n{$request->headers('Date')}\n{$options['CanonicalAmzHeaders']}{$options['CanonicalResource']}";
 		$aws_secret = $this->_testConfig['secret'];
 		//assuming key is global $aws_secret 40 bytes long
 		$aws_secret = (strlen($aws_secret) == 40) ? $aws_secret.str_repeat(chr(0), 24) : $aws_secret;
@@ -113,7 +120,11 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertNotEqual("", $request->headers['Date']);
 		$date = $request->headers['Date'];
 		$this->assertEqual('PUT', $request->method);
-		$this->assertEqual($this->_encrypt("PUT\n\napplication/xml\n{$date}\n/{$bucket}/"), $request->headers['Authorization']);
+		//"PUT\n\napplication/xml\n{$date}\n/{$bucket}/"	
+		$options = array(
+			'CanonicalResource' => "/{$bucket}/",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertEqual('', $request->body);
 		//$this->assertNull($entity->_id);
 		//create file without specifying an id but setting file-size
@@ -141,7 +152,12 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$date = $request->headers['Date'];
 		$this->assertEqual('PUT', $request->method);
 		$md5 = base64_encode(md5($text, true));
-		$this->assertEqual($this->_encrypt("PUT\n{$md5}\nplain/text\n{$date}\n/{$bucket}/test.txt"), $request->headers['Authorization']);
+		//"PUT\n{$md5}\nplain/text\n{$date}\n/{$bucket}/test.txt"
+		$options = array(
+			'Content-MD5'       => $md5,
+			'CanonicalResource' => "/{$bucket}/test.txt",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertEqual($text, $request->body);
 		$this->assertEqual('test.txt', $entity->_id);
 		//create file by specifying an id and set explicitly the md5 and avoid the media handler
@@ -170,7 +186,12 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$date = $request->headers['Date'];
 		$this->assertEqual('PUT', $request->method);
 		$md5 = base64_encode(md5('foo', true));
-		$this->assertEqual($this->_encrypt("PUT\n{$md5}\napplication/foo\n{$date}\n/{$bucket}/foobar.mov"), $request->headers['Authorization']);
+		//"PUT\n{$md5}\napplication/foo\n{$date}\n/{$bucket}/foobar.mov"
+		$options = array(
+			'Content-MD5'       => $md5,
+			'CanonicalResource' => "/{$bucket}/foobar.mov",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertEqual($text, $request->body);
 		$this->assertEqual('foobar.mov', $entity->_id);
         //create file by filename
@@ -200,7 +221,12 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$date = $request->headers['Date'];
 		$this->assertEqual('PUT', $request->method);
 		$md5 = base64_encode(md5($text, true));
-		$this->assertEqual($this->_encrypt("PUT\n{$md5}\n{$type}\n{$date}\n/{$bucket}/{$name}"), $request->headers['Authorization']);
+		//"PUT\n{$md5}\n{$type}\n{$date}\n/{$bucket}/{$name}"
+		$options = array(
+			'Content-MD5'         => $md5,
+			'CanonicalResource'   => "/{$bucket}/{$name}",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertEqual($text, $request->body);
 		$this->assertEqual($name, $entity->_id);
         unlink($tmp_name);
@@ -225,7 +251,13 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$date = $request->headers['Date'];
 		$this->assertEqual('PUT', $request->method);
 		$md5 = base64_encode(md5($text, true));
-		$this->assertEqual($this->_encrypt("PUT\n{$md5}\napplication/octet-stream\n{$date}\nx-amz-server-side-encryption:AES256\n/{$bucket}/{$fileName}"), $request->headers['Authorization']);
+		//"PUT\n{$md5}\napplication/octet-stream\n{$date}\nx-amz-server-side-encryption:AES256\n/{$bucket}/{$fileName}"
+		$options = array(
+			'Content-MD5'         => $md5,
+			'CanonicalAmzHeaders' => "x-amz-server-side-encryption:AES256\n",
+			'CanonicalResource'   => "/{$bucket}/{$fileName}",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertEqual($text, $request->body);
 		$this->assertEqual($fileName, $entity->_id);
 		//upload file but bucket do not exist
@@ -305,7 +337,11 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$date = $request->headers['Date'];
 		$this->assertEqual('POST', $request->method);
 		$md5 = base64_encode(md5($text, true));
-		$this->assertEqual($this->_encrypt("POST\n\n{$type}\n{$date}\n/{$bucket}/{$name}?uploads"), $request->headers['Authorization']);
+		//"POST\n\n{$type}\n{$date}\n/{$bucket}/{$name}?uploads"
+		$options = array(
+			'CanonicalResource'   => "/{$bucket}/{$name}?uploads",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertEqual('', $request->body);
 		//test first part upload
 		$request = $socket::$requests[1];
@@ -317,7 +353,12 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$date = $request->headers['Date'];
 		$this->assertEqual('PUT', $request->method);
 		$md5 = base64_encode(md5(str_repeat('a', 716800), true));
-		$this->assertEqual($this->_encrypt("PUT\n{$md5}\napplication/octet-stream\n{$date}\n/{$bucket}/{$name}?partNumber=1&uploadId={$chunks['UploadId']}"), $request->headers['Authorization']);
+		//"PUT\n{$md5}\napplication/octet-stream\n{$date}\n/{$bucket}/{$name}?partNumber=1&uploadId={$chunks['UploadId']}"
+		$options = array(
+			'Content-MD5'         => $md5,
+			'CanonicalResource'   => "/{$bucket}/{$name}?partNumber=1&uploadId={$chunks['UploadId']}",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertEqual(str_repeat('a', 716800), $request->body);
 		$request = $socket::$requests[2];
 		$this->assertEqual("{$bucket}.s3.{$this->_testConfig['host']}", $request->host);
@@ -328,7 +369,12 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$date = $request->headers['Date'];
 		$this->assertEqual('PUT', $request->method);
 		$md5 = base64_encode(md5(str_repeat('a', 1048576-716800), true));
-		$this->assertEqual($this->_encrypt("PUT\n{$md5}\napplication/octet-stream\n{$date}\n/{$bucket}/{$name}?partNumber=2&uploadId={$chunks['UploadId']}"), $request->headers['Authorization']);
+		//"PUT\n{$md5}\napplication/octet-stream\n{$date}\n/{$bucket}/{$name}?partNumber=2&uploadId={$chunks['UploadId']}"
+		$options = array(
+			'Content-MD5'         => $md5,
+			'CanonicalResource'   => "/{$bucket}/{$name}?partNumber=2&uploadId={$chunks['UploadId']}",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertEqual(str_repeat('a', 1048576-716800), $request->body);
 		//test last request
 		$request = $this->db->last->request;
@@ -347,7 +393,12 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$part->addChild('ETag', 'foo2');
 		$text = $text->asXML();
 		$md5 = base64_encode(md5($text, true));
-		$this->assertEqual($this->_encrypt("POST\n{$md5}\napplication/xml\n{$date}\n/{$bucket}/{$name}?uploadId={$chunks['UploadId']}"), $request->headers['Authorization']);
+		//"POST\n{$md5}\napplication/xml\n{$date}\n/{$bucket}/{$name}?uploadId={$chunks['UploadId']}"
+		$options = array(
+			'Content-MD5'         => $md5,
+			'CanonicalResource'   => "/{$bucket}/{$name}?uploadId={$chunks['UploadId']}",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertEqual($text, $request->body);
 		$this->assertEqual($name, $entity->_id);
 		
@@ -380,7 +431,12 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$date = $request->headers['Date'];
 		$this->assertEqual('POST', $request->method);
 		$md5 = base64_encode(md5($text, true));
-		$this->assertEqual($this->_encrypt("POST\n\n{$type}\n{$date}\nx-amz-server-side-encryption:AES256\n/{$bucket}/{$name}?uploads"), $request->headers['Authorization']);
+		//"POST\n\n{$type}\n{$date}\nx-amz-server-side-encryption:AES256\n/{$bucket}/{$name}?uploads"
+		$options = array(
+			'CanonicalAmzHeaders' => "x-amz-server-side-encryption:AES256\n",
+			'CanonicalResource'   => "/{$bucket}/{$name}?uploads",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertEqual('', $request->body);
 		//test first part upload
 		$request = $socket::$requests[1];
@@ -393,7 +449,12 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$date = $request->headers['Date'];
 		$this->assertEqual('PUT', $request->method);
 		$md5 = base64_encode(md5(str_repeat('a', 716800), true));
-		$this->assertEqual($this->_encrypt("PUT\n{$md5}\napplication/octet-stream\n{$date}\n/{$bucket}/{$name}?partNumber=1&uploadId={$chunks['UploadId']}"), $request->headers['Authorization']);
+		//"PUT\n{$md5}\napplication/octet-stream\n{$date}\n/{$bucket}/{$name}?partNumber=1&uploadId={$chunks['UploadId']}"
+		$options = array(
+			'Content-MD5'         => $md5,
+			'CanonicalResource'   => "/{$bucket}/{$name}?partNumber=1&uploadId={$chunks['UploadId']}",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertEqual(str_repeat('a', 716800), $request->body);
 		$request = $socket::$requests[2];
 		$this->assertEqual("{$bucket}.s3.{$this->_testConfig['host']}", $request->host);
@@ -405,7 +466,12 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$date = $request->headers['Date'];
 		$this->assertEqual('PUT', $request->method);
 		$md5 = base64_encode(md5(str_repeat('a', 1048576-716800), true));
-		$this->assertEqual($this->_encrypt("PUT\n{$md5}\napplication/octet-stream\n{$date}\n/{$bucket}/{$name}?partNumber=2&uploadId={$chunks['UploadId']}"), $request->headers['Authorization']);
+		//"PUT\n{$md5}\napplication/octet-stream\n{$date}\n/{$bucket}/{$name}?partNumber=2&uploadId={$chunks['UploadId']}"
+		$options = array(
+			'Content-MD5'         => $md5,
+			'CanonicalResource'   => "/{$bucket}/{$name}?partNumber=2&uploadId={$chunks['UploadId']}",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertEqual(str_repeat('a', 1048576-716800), $request->body);
 		//test last request
 		$request = $this->db->last->request;
@@ -425,12 +491,16 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$part->addChild('ETag', 'foo2');
 		$text = $text->asXML();
 		$md5 = base64_encode(md5($text, true));
-		$this->assertEqual($this->_encrypt("POST\n{$md5}\napplication/xml\n{$date}\n/{$bucket}/{$name}?uploadId={$chunks['UploadId']}"), $request->headers['Authorization']);
+		//"POST\n{$md5}\napplication/xml\n{$date}\n/{$bucket}/{$name}?uploadId={$chunks['UploadId']}"
+		$options = array(
+			'Content-MD5'         => $md5,
+			'CanonicalResource'   => "/{$bucket}/{$name}?uploadId={$chunks['UploadId']}",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertEqual($text, $request->body);
 		$this->assertEqual($name, $entity->_id);
 
 		unlink($tmp_name);
-		
 	}
 	
 	public function testCreateWithErrorAndNoEntity() {
@@ -511,7 +581,11 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertNotEqual("", $request->headers['Date']);
 		$date = $request->headers['Date'];
 		$this->assertEqual('GET', $request->method);
-		$this->assertEqual($this->_encrypt("GET\n\n\n{$date}\n/"), $request->headers['Authorization']);
+		//"GET\n\n\n{$date}\n/"
+		$options = array(
+			'CanonicalResource'   => "/",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertIdentical('', $request->body);
 		$this->assertEqual(2, count($result));
 		$this->assertEqual(array('source' => 'quotes', 'creationdate' => '2006-02-03T16:45:09.000Z'), $result[0]->data());
@@ -554,7 +628,11 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertNotEqual("", $request->headers['Date']);
 		$date = $request->headers['Date'];
 		$this->assertEqual('GET', $request->method);
-		$this->assertEqual($this->_encrypt("GET\n\n\n{$date}\n/"), $request->headers['Authorization']);
+		//"GET\n\n\n{$date}\n/"
+		$options = array(
+			'CanonicalResource'   => "/",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertIdentical('', $request->body);
 		$this->assertEqual(2, count($result));
 		$this->assertEqual(array('source' => 'quotes', 'creationdate' => '2006-02-03T16:45:09.000Z'), $result[0]->data());
@@ -608,7 +686,11 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertNotEqual("", $request->headers['Date']);
 		$date = $request->headers['Date'];
 		$this->assertEqual('GET', $request->method);
-		$this->assertEqual($this->_encrypt("GET\n\n\n{$date}\n/{$bucket}/"), $request->headers['Authorization']);
+		//"GET\n\n\n{$date}\n/{$bucket}/"
+		$options = array(
+			'CanonicalResource'   => "/{$bucket}/",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertIdentical('', $request->body);
 		$this->assertEqual(2, count($result));
 		$expected = array(
@@ -645,7 +727,11 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertNotEqual("", $request->headers['Date']);
 		$date = $request->headers['Date'];
 		$this->assertEqual('GET', $request->method);
-		$this->assertEqual($this->_encrypt("GET\n\n\n{$date}\n/{$bucket}/"), $request->headers['Authorization']);
+		//"GET\n\n\n{$date}\n/{$bucket}/"
+		$options = array(
+			'CanonicalResource'   => "/{$bucket}/",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertIdentical('', $request->body);
 		//test bucket exist
 		$socket::$data = join("\r\n", array(
@@ -663,7 +749,11 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertNotEqual("", $request->headers['Date']);
 		$date = $request->headers['Date'];
 		$this->assertEqual('HEAD', $request->method);
-		$this->assertEqual($this->_encrypt("HEAD\n\n\n{$date}\n/{$bucket}/"), $request->headers['Authorization']);
+		//"HEAD\n\n\n{$date}\n/{$bucket}/"
+		$options = array(
+			'CanonicalResource'   => "/{$bucket}/",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertIdentical('', $request->body);
 		$this->assertEqual(1, count($result));
 		//read object
@@ -688,7 +778,11 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertNotEqual("", $request->headers['Date']);
 		$date = $request->headers['Date'];
 		$this->assertEqual('GET', $request->method);
-		$this->assertEqual($this->_encrypt("GET\n\n\n{$date}\n/{$bucket}/foo.txt"), $request->headers['Authorization']);
+		//"GET\n\n\n{$date}\n/{$bucket}/foo.txt"
+		$options = array(
+			'CanonicalResource'   => "/{$bucket}/foo.txt",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertIdentical('', $request->body);
 		$this->assertEqual(1, count($result));
 		$result = $result->first();
@@ -718,7 +812,11 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertNotEqual("", $request->headers['Date']);
 		$date = $request->headers['Date'];
 		$this->assertEqual('GET', $request->method);
-		$this->assertEqual($this->_encrypt("GET\n\n\n{$date}\n/{$bucket}/foo.txt"), $request->headers['Authorization']);
+		//"GET\n\n\n{$date}\n/{$bucket}/foo.txt"
+		$options = array(
+			'CanonicalResource'   => "/{$bucket}/foo.txt",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertIdentical('', $request->body);
 		$this->assertEqual(1, count($result));
 		//test object exist
@@ -740,7 +838,11 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertNotEqual("", $request->headers['Date']);
 		$date = $request->headers['Date'];
 		$this->assertEqual('HEAD', $request->method);
-		$this->assertEqual($this->_encrypt("HEAD\n\n\n{$date}\n/{$bucket}/foo.txt"), $request->headers['Authorization']);
+		//"HEAD\n\n\n{$date}\n/{$bucket}/foo.txt"
+		$options = array(
+			'CanonicalResource'   => "/{$bucket}/foo.txt",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertIdentical('', $request->body);
 		$this->assertEqual(1, count($result));
 		//read object stream
@@ -828,7 +930,11 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertNotEqual("", $request->headers['Date']);
 		$date = $request->headers['Date'];
 		$this->assertEqual('DELETE', $request->method);
-		$this->assertEqual($this->_encrypt("DELETE\n\n\n{$date}\n/{$bucket}/"), $request->headers['Authorization']);
+		//"DELETE\n\n\n{$date}\n/{$bucket}/"
+		$options = array(
+			'CanonicalResource'   => "/{$bucket}/",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertIdentical('', $request->body);
 		$this->assertTrue($result);
 		//delete object
@@ -850,7 +956,11 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertNotEqual("", $request->headers['Date']);
 		$date = $request->headers['Date'];
 		$this->assertEqual('DELETE', $request->method);
-		$this->assertEqual($this->_encrypt("DELETE\n\n\n{$date}\n/{$bucket}/foo.txt"), $request->headers['Authorization']);
+		//"DELETE\n\n\n{$date}\n/{$bucket}/foo.txt"
+		$options = array(
+			'CanonicalResource'   => "/{$bucket}/foo.txt",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertIdentical('', $request->body);
 		$this->assertTrue($result);
 		//delete object with error message
@@ -872,7 +982,11 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertNotEqual("", $request->headers['Date']);
 		$date = $request->headers['Date'];
 		$this->assertEqual('DELETE', $request->method);
-		$this->assertEqual($this->_encrypt("DELETE\n\n\n{$date}\n/{$bucket}/foo.txt"), $request->headers['Authorization']);
+		//"DELETE\n\n\n{$date}\n/{$bucket}/foo.txt"
+		$options = array(
+			'CanonicalResource'   => "/{$bucket}/foo.txt",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertIdentical('', $request->body);
 		$this->assertFalse($result);
 		//delete multiple objects
@@ -908,7 +1022,12 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertEqual($body, $request->body);
 		$md5 = base64_encode(md5($body, true));
 		$this->assertEqual($md5, $request->headers['Content-MD5']);
-		$this->assertEqual($this->_encrypt("POST\n{$md5}\napplication/xml\n{$date}\n/{$bucket}/?delete"), $request->headers['Authorization']);
+		//"POST\n{$md5}\napplication/xml\n{$date}\n/{$bucket}/?delete"
+		$options = array(
+			'Content-MD5'         => $md5,
+			'CanonicalResource'   => "/{$bucket}/?delete",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertTrue($result);
 		//delete more than 1000 objects
 		$responseBody = '<?xml version="1.0" encoding="UTF-8"?>
@@ -945,7 +1064,12 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertEqual($body, $request->body);
 		$md5 = base64_encode(md5($body, true));
 		$this->assertEqual($md5, $request->headers['Content-MD5']);
-		$this->assertEqual($this->_encrypt("POST\n{$md5}\napplication/xml\n{$date}\n/{$bucket}/?delete"), $request->headers['Authorization']);
+		//"POST\n{$md5}\napplication/xml\n{$date}\n/{$bucket}/?delete"
+		$options = array(
+			'Content-MD5'         => $md5,
+			'CanonicalResource'   => "/{$bucket}/?delete",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertTrue($result);
 		//delete more than 1000 objects with error message
 		$responseBody = '<?xml version="1.0" encoding="UTF-8"?>
@@ -988,7 +1112,12 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertEqual($body, $request->body);
 		$md5 = base64_encode(md5($body, true));
 		$this->assertEqual($md5, $request->headers['Content-MD5']);
-		$this->assertEqual($this->_encrypt("POST\n{$md5}\napplication/xml\n{$date}\n/{$bucket}/?delete"), $request->headers['Authorization']);
+		//"POST\n{$md5}\napplication/xml\n{$date}\n/{$bucket}/?delete"
+		$options = array(
+			'Content-MD5'         => $md5,
+			'CanonicalResource'   => "/{$bucket}/?delete",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertFalse($result);
 		//delete more than 1000 objects with bucket error message
 		$responseBody = '<?xml version="1.0" encoding="UTF-8"?>
@@ -1025,7 +1154,12 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertEqual($body, $request->body);
 		$md5 = base64_encode(md5($body, true));
 		$this->assertEqual($md5, $request->headers['Content-MD5']);
-		$this->assertEqual($this->_encrypt("POST\n{$md5}\napplication/xml\n{$date}\n/{$bucket}/?delete"), $request->headers['Authorization']);
+		//"POST\n{$md5}\napplication/xml\n{$date}\n/{$bucket}/?delete"
+		$options = array(
+			'Content-MD5'         => $md5,
+			'CanonicalResource'   => "/{$bucket}/?delete",
+		);
+		$this->assertEqual($this->_encrypt($request, $options), $request->headers['Authorization']);
 		$this->assertFalse($result);
 	}
 }

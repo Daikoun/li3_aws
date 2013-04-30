@@ -3,7 +3,6 @@
 namespace li3_aws\tests\cases\extensions\adapter\data\source\http;
 
 use lithium\data\model\Query;
-use lithium\data\Connections;
 use lithium\data\entity\Document;
 use li3_aws\extensions\adapter\data\source\http\AmazonS3;
 
@@ -40,9 +39,6 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$model = $this->_model;
 		$model::$connection = $this->db;
 		$model::resetSchema();
-//		$entity = new Document(compact('model'));
-//		$this->query = new Query(compact('model', 'entity'));
-//		$this->query = new Query(compact('model'));
 	}
 
 	public function tearDown() {
@@ -78,7 +74,7 @@ class AmazonS3Test extends \lithium\test\Unit {
 	}
 
 	public function testDescribe() {
-		$this->assertTrue(is_object($this->db->describe('companies')));
+		$this->assertEqual(array(), $this->db->describe('companies'));
 	}
 
 	public function testItem() {
@@ -626,7 +622,7 @@ class AmazonS3Test extends \lithium\test\Unit {
 				'displayname' => 'mtd@amazon.com',
 			),
 		);
-		$this->assertEqual($expected, $result['my-image.jpg']->data());
+		$this->assertEqual($expected, $result->first()->data());
 		$expected = array(
 			'_id' => 'my-third-image.jpg',
 			'lastmodified' => '2009-10-12T17:50:30.000Z',
@@ -638,7 +634,7 @@ class AmazonS3Test extends \lithium\test\Unit {
 				'displayname' => 'mtd@amazon.com',
 			),
 		);
-		$this->assertEqual($expected, $result['my-third-image.jpg']->data());
+		$this->assertEqual($expected, $result->next()->data());
 		//test list objects and handle limit
 		$this->query = new Query(compact('model'));
 		$this->query->limit(1);
@@ -695,7 +691,7 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->assertEqual($this->_encrypt("GET\n\n\n{$date}\n/{$bucket}/foo.txt"), $request->headers['Authorization']);
 		$this->assertIdentical('', $request->body);
 		$this->assertEqual(1, count($result));
-		$result = $result['foo.txt'];
+		$result = $result->first();
 		$this->assertEqual('text/plain', $result->headers['Content-Type']);
 		$this->assertEqual(strlen($text), $result->headers['Content-Length']);
 		$this->assertEqual('foo.txt', $result->_id);
@@ -765,7 +761,7 @@ class AmazonS3Test extends \lithium\test\Unit {
 		$this->query->return('stream');
 		$result = $this->db->read($this->query);
 		$this->assertEqual(1, count($result));
-		$result = $result['foo.txt'];
+		$result = $result->first();
 		$this->assertEqual('foo.txt', $result->_id);
 		$content = $result->file->getBytes();
 		$content = explode("\r\n\r\n", $content);

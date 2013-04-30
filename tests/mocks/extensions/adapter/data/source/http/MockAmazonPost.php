@@ -2,8 +2,6 @@
 
 namespace li3_aws\tests\mocks\extensions\adapter\data\source\http;
 
-use lithium\data\DocumentSchema;
-
 class MockAmazonPost extends \lithium\tests\mocks\data\MockBase {
 
 	public static $connection;
@@ -22,7 +20,7 @@ class MockAmazonPost extends \lithium\tests\mocks\data\MockBase {
 		if ($array) {
 			return static::_object()->_schema = array();
 		}
-		static::_object()->_schema = new DocumentSchema();
+		static::_object()->_schema = array();
 	}
 }
 

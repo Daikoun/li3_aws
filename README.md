@@ -215,7 +215,7 @@ Using the Model allows you to delete multiple files in one request.
 Test Cases:
 -----------
 
-The `li3_aws` plugin provides you with a mock class simulating access to Amazon S3.
+The `li3_aws` plugin provides you with a mock class simulating an Amazon S3 storage.
 You can setup your environment, that you access local Mongo-GridFs on development, the AmazonS3-Mock on testing and real Amazon S3 on production.
 
 ```php

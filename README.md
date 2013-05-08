@@ -164,6 +164,7 @@ In this case `$picture->file` is the StreamWrapper-Class `li3_aws/data/AmazonS3F
 			echo fgets($stream, 16384);
 		} 
 		fclose($stream);
+		$this->response = null;
 		return;
 	}
 ``` 

@@ -118,12 +118,9 @@ class AmazonS3 extends \lithium\data\source\Http {
 		$method = $pathConfig['method'];
 		$config = compact('headers', 'return') + array('host' => $pathConfig['host'], 'type' => null);
 		if (array_key_exists('type', $pathConfig) && $pathConfig['type'] !== null) {
-			//if 
-			$config['type'] = Media::type($pathConfig['type']);
-			//if no Media type found, set request _type flag to content-type and type flag to null, to pass Media handler 
-			if (!$config['type']) {
-				$config['_type'] = $pathConfig['type'];
-			}
+			//bypass the Media handler to avoid stupid encode of the body by 
+			//set _type flag to content-type and type flag to null
+			$config['_type'] = $pathConfig['type'];
 		}
 		switch ($return) {
 			case ('stream'): 

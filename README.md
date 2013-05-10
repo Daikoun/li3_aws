@@ -219,7 +219,7 @@ Test Cases:
 The `li3_aws` plugin provides you with a mock class simulating an Amazon S3 storage.
 You can setup your environment, that you access local Mongo-GridFs on development, the AmazonS3-Mock on testing and real Amazon S3 on production.
 For this use case, you need to move the `source` setup from the model into the connection. 
-An easy way to achieve this is to create a base model in inherit from that base model.
+An easy way to achieve this is to create a base model and inherit from that base model.
 
 ```php
 use \lithium\data\Connections;

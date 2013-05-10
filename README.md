@@ -218,6 +218,26 @@ Test Cases:
 
 The `li3_aws` plugin provides you with a mock class simulating an Amazon S3 storage.
 You can setup your environment, that you access local Mongo-GridFs on development, the AmazonS3-Mock on testing and real Amazon S3 on production.
+For this use case, you need to move the `source` setup from the model into the connection. 
+An easy way to achieve this is to create a base model in inherit from that base model.
+
+```php
+use \lithium\data\Connections;
+
+class BaseModel extends \lithium\data\Model {
+
+	public static function __init() {
+		parent::__init();
+		$conn = static::meta('connection');
+		$config = Connections::get($conn, array('config' => true));
+		if (isset($config['source'])) {
+			static::meta('source', $config['source']);
+		}
+	}
+}
+```
+
+Now you can optionally set the source in the connections.
 
 ```php
 Connections::add('amazon_s3', array(
@@ -239,6 +259,11 @@ Connections::add('amazon_s3', array(
 		'adapter' => 'AmazonS3',
 		'key'	  => 'my_key',
 		'secret'  => 'my_secret',
+		'source'  => 'myBucketName',
     ),
 ));
 ```
+
+In `development` environment, you use Mongo-GridFs and in `production` environment, 
+you use AmazonS3 without changing anything in the source code, because both Stream-Wrapper,
+`MongoGridFSFile` and `AmazonS3File` have the same functions `getBytes()` and `getResource()`.

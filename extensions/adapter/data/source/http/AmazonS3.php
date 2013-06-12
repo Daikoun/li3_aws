@@ -78,6 +78,16 @@ class AmazonS3 extends \lithium\data\source\Http {
 		return ltrim($result, '&');	
 	}
 	
+	/**
+	 * Helper function is workaround to detect a valid path caused by php5.4 invalid path
+	 * Exception by calling file_exists
+	 * @param type $path the string to check for a valid path
+	 * return bool true if path is valid, else false 
+	 */
+	protected function _validPath($path) {
+		return (preg_match('#^(/[^/]+)+$#',$path) == 1);
+	}
+	
 	protected function _path($type, array $params) {
 		if (!isset($this->_sources['paths'][$type])) {
 			return null;
@@ -504,7 +514,8 @@ class AmazonS3 extends \lithium\data\source\Http {
 					);
 				unset($data['file']);
 				$data += $file;
-				$fileExist = file_exists($file['tmp_name']);
+				//stupid php5.4 path not valid exception workaround
+				$fileExist = $this->_validPath($file['tmp_name']) && file_exists($file['tmp_name']);
 				$multipart = $multipart && $fileExist && $file['size'] > $options['chunk_size'];
 				$pathConfig['body'] = ($fileExist && !$multipart) ? file_get_contents($file['tmp_name']) : $file['tmp_name'];
 			break;

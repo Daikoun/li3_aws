@@ -679,7 +679,7 @@ class AmazonS3 extends \lithium\data\source\Http {
 
 	public function createSignedURL($filepath, $expires = null, $filename = null) {
 		$context = ($filename) ? array(
-			'response-content-disposition' => 'attachment; filename="'.urlencode($filename).'"',
+			'response-content-disposition' => 'attachment; filename="'.utf8_decode($filename).'"',
 		) : array();
 		$object = $filepath;
 		$source = isset($this->_config['source']) ? $this->_config['source'] : '';

@@ -256,6 +256,7 @@ class AmazonS3 extends \lithium\data\source\Http {
 			'body'    => '',
 			'size'    => null,
 			'source'  => '',
+			'expires' => null,
 			'object'  => '',
 			'context' => array(),
 			'host'    => $this->_config['host'],
@@ -264,8 +265,8 @@ class AmazonS3 extends \lithium\data\source\Http {
 		$headers = array();
 		$headers['Host'] = $params['host'];
 		$amz_headers = $params['x-amz'];
-		$date = '';
-		if (!array_key_exists('x-amz-date', $amz_headers)) {
+		$date = $params['expires'];
+		if (!($date || array_key_exists('x-amz-date', $amz_headers))) {
 			$date = gmdate('r'); // GMT based timestamp
 			$headers['Date'] = $date;
 		}
@@ -299,7 +300,10 @@ class AmazonS3 extends \lithium\data\source\Http {
 		$canonicalizedResource = (empty($params['source'])) ? "" : "/{$params['source']}";
 		$canonicalizedResource.= "/{$params['object']}";
 		if (!empty($params['context'])) {
-			$context = explode('&', $this->_encode($params['context']));
+			$context = array();
+			foreach($params['context'] as $key => $val) {
+				$context[] = is_int($key) ? $val : "{$key}={$val}";
+			}
 			sort($context);
 			$canonicalizedResource .= '?' . implode('&', $context);
 		}
@@ -671,6 +675,26 @@ class AmazonS3 extends \lithium\data\source\Http {
 
 	public function sources($class = null) {
 		return; //array_keys($this->_sources);
+	}
+
+	public function createSignedURL($filepath, $expires = null, $filename = null) {
+		$context = ($filename) ? array(
+			'response-content-disposition' => 'attachment; filename="'.urlencode($filename).'"',
+		) : array();
+		$object = $filepath;
+		$source = isset($this->_config['source']) ? $this->_config['source'] : '';
+		$expires = ($expires) ? time() + $expires : null;
+		$params = compact('context', 'expires', 'source', 'object');
+		$headers = $this->_requestHeaders($params);
+		$authorization = $headers['Authorization'];
+		$authSplit = strpos($authorization, ':');
+		$url = sprintf('http://%s.s3.%s/%s', $source, $this->_config['host'], $filepath);
+		$query = $context + array(
+			'AWSAccessKeyId' => substr($authorization, 4, $authSplit - 4),
+			'Expires'        => $expires,
+			'Signature'      => substr($authorization, $authSplit + 1),
+		);
+		return $url.'?'.http_build_query($query);
 	}
 
 }

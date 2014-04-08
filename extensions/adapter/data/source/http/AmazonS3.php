@@ -677,7 +677,12 @@ class AmazonS3 extends \lithium\data\source\Http {
 		return; //array_keys($this->_sources);
 	}
 
-	public function createSignedURL($filepath, $expires = null, $filename = null) {
+	public function createSignedURL($filepath, $expires = null, $filename = null, array $options = array()) {
+		$defaults = array(
+			'scheme' => $this->_config['scheme'],
+		);
+		$options += $defaults;
+		
 		$context = ($filename) ? array(
 			'response-content-disposition' => 'attachment; filename*=UTF-8\'\''. rawurlencode($filename).'',			
 		) : array();
@@ -688,7 +693,7 @@ class AmazonS3 extends \lithium\data\source\Http {
 		$headers = $this->_requestHeaders($params);
 		$authorization = $headers['Authorization'];
 		$authSplit = strpos($authorization, ':');
-		$url = sprintf('http://%s.s3.%s/%s', $source, $this->_config['host'], $filepath);
+		$url = sprintf('%s://%s.s3.%s/%s', $options['scheme'], $source, $this->_config['host'], $filepath);
 		$query = $context + array(
 			'AWSAccessKeyId' => substr($authorization, 4, $authSplit - 4),
 			'Expires'        => $expires,
